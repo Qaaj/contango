@@ -1,0 +1,28 @@
+{
+  "name": "contango",
+  "version": "1.0.0",
+  "description": "Historical gas price analytics on the Ethereum blockchain",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "nodemon index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Qaaj/contango.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Qaaj/contango/issues"
+  },
+  "homepage": "https://github.com/Qaaj/contango#readme",
+  "dependencies": {
+    "ethers": "^5.0.23",
+    "lodash": "^4.17.20",
+    "pm2": "^4.5.0"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.6"
+  }
+}
