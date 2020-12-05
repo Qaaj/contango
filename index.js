@@ -4,12 +4,18 @@ const _ = require('lodash');
 const CLI = require('clui'),
     clc = require('cli-color'),
     clear = require('clear');
+const fetch = require('node-fetch');
+
+const validatorAddress = '';
 
 let currentblock = 0;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 let counter = 0;
 let lastData;
+let validatorData;
+
 const updateUI = async (data = lastData, update) => {
+
     if(!data) return;
     lastData = data;
     clear();
@@ -31,6 +37,14 @@ const updateUI = async (data = lastData, update) => {
     console.log('')
     console.log(update)
     console.log('')
+    if(validatorData){
+        console.log(`   Latest Attestations for ${clc.yellow(validatorAddress)}`);
+        console.log('')
+        const colorFX = (num) => num ? clc.green : clc.red;
+        validatorData.forEach(item => {
+            console.log(colorFX(item.status)(`      > Epoch ${item.epoch}: ${item.status ? 'SUCCESS' : 'FAIL/PENDING'}`))
+        })
+    }
 
 }
 
@@ -102,16 +116,20 @@ const main = async () => {
     }else{
         counter++;
         const spinner = ['.','..','...'];
-        // let dots = ''
-        // let i = 0;
-        // while(i < counter % 4){
-        //     i++;
-        //     dots += '.';
-        // }
         updateUI(lastData, clc.yellow(`   Polling for new blocks ${spinner[counter % 3]}`));
     }
     await sleep(500);
     main();
 }
 
+const validator = async () => {
+    const data = await fetch(`https://beaconcha.in/api/v1/validator/${validatorAddress}/attestations`);
+    const json = await data.json();
+    validatorData = json.data;
+    updateUI();
+    await sleep(30000);
+    validator();
+}
+
 main();
+if(validatorAddress) validator()

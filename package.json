@@ -23,6 +23,7 @@
     "clui": "^0.3.6",
     "ethers": "^5.0.23",
     "lodash": "^4.17.20",
+    "node-fetch": "^2.6.1",
     "pm2": "^4.5.0"
   },
   "devDependencies": {
