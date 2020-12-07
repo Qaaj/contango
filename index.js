@@ -77,7 +77,7 @@ const fetchQueue = async () => {
         });
         fs.writeFile('addresses.json', file, 'utf8', () =>{});
     }
-    await sleep(1000);
+    await sleep(5000);
     fetchQueue();
 }
 
