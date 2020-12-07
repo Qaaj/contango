@@ -1,21 +1,87 @@
 const ethers = require('ethers');
+const fs = require('fs');
 const provider = new ethers.providers.JsonRpcProvider();
 const _ = require('lodash');
 const CLI = require('clui'),
     clc = require('cli-color'),
     clear = require('clear');
 const fetch = require('node-fetch');
+const { Table } = require('console-table-printer');
 
-const validatorAddress = '';
+const knownTokens = require('./addresses.json').tokens;
+const knownContracts = require('./addresses.json').contracts;
+const unknown = require('./addresses.json').unknown;
+
+const queued = {};
+
+const validatorAddress = '0x81839a763058daa0da5d792f5028922c0ac9e4975d2ac121b972f57ad7b82b190f156096cc547d5ebd0e2c485634e73a';
 
 let currentblock = 0;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 let counter = 0;
 let lastData;
 let validatorData;
+const colorFX = (num) => num ? clc.green : clc.red;
+
+const doContractData = (txData) => {
+    // console.log(txData)
+    const known = { ...knownTokens, ...knownContracts}
+    const contracts = _.groupBy(txData, 'to');
+    const mostTx = _.sortBy(contracts, 'length').reverse();
+    const top10 = _.slice(mostTx,0,10).map(list => {
+        const { to, from  } = list[0];
+        const counts = list.length;
+        if(!known[to] && !queued[to] && !unknown[to]){
+           queued[to] = 'QUEUED';
+        }
+        if(!to) console.log(' >>>> FROM', from);
+        return {   to, counts };
+    })
+    const table = new Table({
+        columns: [
+            { name: 'address', alignment: 'left', title: 'Address' }, //with alignment and color
+            { name: 'name', alignment: 'right', title: 'Name' },
+            { name: 'counts', title: 'Count' },
+        ],
+    });
+    top10.forEach(item => {
+        table.addRow({
+            address: item.to,
+            name: known[item.to] || 'Unkown',
+            counts: item.counts,
+        })
+    })
+    table.printTable()
+
+}
+
+const fetchQueue = async () => {
+    const queue = Object.keys(queued);
+    if(queue.length > 0){
+        const address = queue[0];
+        delete queued[address];
+        const result = await fetch(`https://api.coingecko.com/api/v3/coins/ethereum/contract/${address}`);
+        const json = await result.json();
+        if(json.id){
+            console.log(' +++ Added Token',address,json.name);
+            knownTokens[address] = `${json.name} (${json.symbol.toUpperCase()})`;
+
+        }else{
+            console.log(' +++ Added Unkown: ', address);
+            unknown[address] = 'fail';
+        }
+        let file = JSON.stringify({
+            contracts: knownContracts,
+            tokens: knownTokens,
+            unknown,
+        });
+        fs.writeFile('addresses.json', file, 'utf8', () =>{});
+    }
+    await sleep(1000);
+    fetchQueue();
+}
 
 const updateUI = async (data = lastData, update) => {
-
     if(!data) return;
     lastData = data;
     clear();
@@ -24,28 +90,24 @@ const updateUI = async (data = lastData, update) => {
     const avg = clc.yellow(Math.round(averageGasHuman*100)/100);
     const max = clc.red(Math.round(maxGas*100)/100);
     console.log('');
-    const line1 = `   ${clc.green('Block Height: \t\t')} ${clc.yellow.bold(BLOCK)}`;
-    const line2 = `   ${clc.green('Block Gas Limit Used:')} \t ${CLI.Gauge(BLOCK_PERCENT_FULL, 100, 20, 100, `${BLOCK_PERCENT_FULL.toString().substring(0, 5)} % \t`)}`;
-    const line3 = `   ${clc.green('Gas Price [min, avg, max]:')} \t [ ${min} , ${avg} , ${max} ]`;
-    const line4 = `   There was ${clc.green(TOTAL_ETH_SENT)} ETH sent in ${clc.green(NUM_TXS)} Transactions`;
-    console.log(line1);
-    console.log(line2);
+    console.log(`   ${clc.green('Block Height: \t\t')} ${clc.yellow.bold(BLOCK)}`);
+    console.log( `   ${clc.green('Block Gas Limit Used:')} \t ${CLI.Gauge(BLOCK_PERCENT_FULL, 100, 20, 100, `${BLOCK_PERCENT_FULL.toString().substring(0, 5)} % \t`)}`);
     console.log('')
-    console.log(line3);
+    console.log(`   ${clc.green('Gas Price [min, avg, max]:')} \t [ ${min} , ${avg} , ${max} ]`);
     console.log('')
-    console.log(line4);
+    console.log(`   There was ${clc.green(TOTAL_ETH_SENT)} ETH sent in ${clc.green(NUM_TXS)} Transactions`);
     console.log('')
     console.log(update)
     console.log('')
+    doContractData(data.txData);
     if(validatorData){
-        console.log(`   Latest Attestations for ${clc.yellow(validatorAddress)}`);
+        let ok = 0, nok = 0;
+        validatorData.forEach(item => item.status ? ok++ : nok++)
+        const epoch = _.maxBy(validatorData, 'epoch').epoch;
+        console.log(`   Attestations health for ${clc.yellow(validatorAddress.substr(0,15))}...  ${colorFX(1)(ok)} Succes - ${colorFX(-1)(nok)} Failed or Pending`);
+        console.log(colorFX(validatorData[0].status)(`      > Latest Epoch ${epoch}: ${validatorData[0].status ? 'SUCCESS' : 'FAIL/PENDING'}`))
         console.log('')
-        const colorFX = (num) => num ? clc.green : clc.red;
-        validatorData.forEach(item => {
-            console.log(colorFX(item.status)(`      > Epoch ${item.epoch}: ${item.status ? 'SUCCESS' : 'FAIL/PENDING'}`))
-        })
     }
-
 }
 
 const parseTXs = async (txs) => {
@@ -57,6 +119,7 @@ const parseTXs = async (txs) => {
             const {gasPrice, gasLimit, from, to, value, hash} = await provider.getTransaction(tx);
             return {
                 gasPrice: parseFloat(gasPrice),
+                gas: parseFloat(gasPrice)/1e19,
                 gasLimit: parseFloat(gasLimit), from, to,
                 value: parseFloat(value),
                 gasUsed: parseFloat(gasUsed),
@@ -90,7 +153,7 @@ const parseBlock = async (blockheight) => {
     // console.log(test2)
     // const test = await provider.getTransaction('0xd38b2d4b0aaa5424d41ce165c260eeccd062e5101f0f9c00380aa472a2a8f932');
     // console.log(test)
-    const {averageGas, maxGas, minGas, averageGasHuman, ethSent, ethSentHuman, failed, totalGas, totalGasHuman} = await parseTXs(block.transactions)
+    const {txData, averageGas, maxGas, minGas, averageGasHuman, ethSent, ethSentHuman, failed, totalGas, totalGasHuman} = await parseTXs(block.transactions)
     const avgGasPerTx = gasUsed / numTx;
     const information = {
         BLOCK: blockheight,
@@ -101,7 +164,7 @@ const parseBlock = async (blockheight) => {
         AVERAGE_GAS_PRICE: averageGasHuman,
         TOTAL_ETH_SENT: ethSentHuman,
         ACCURACY: 100 * (1 - (failed / block.transactions.length)),
-        maxGas, averageGas, minGas, averageGasHuman
+        maxGas, averageGas, minGas, averageGasHuman, txData
     };
     updateUI(information, clc.yellow('   Polling for new blocks'))
     return 'ok;'
@@ -132,4 +195,5 @@ const validator = async () => {
 }
 
 main();
+fetchQueue();
 if(validatorAddress) validator()

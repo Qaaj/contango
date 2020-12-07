@@ -7,6 +7,9 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "nodemon index.js"
   },
+  "nodemonConfig": {
+    "ignore": ["addresses.json"]
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Qaaj/contango.git"
@@ -21,6 +24,7 @@
     "clear": "^0.1.0",
     "cli-color": "^2.0.0",
     "clui": "^0.3.6",
+    "console-table-printer": "^2.7.3",
     "ethers": "^5.0.23",
     "lodash": "^4.17.20",
     "node-fetch": "^2.6.1",
